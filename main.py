@@ -1,20 +1,16 @@
 import time
 import sys
+import env
+import current_markets as scout       #  (fetching markets) scripts
+import research_strat as researcher # Your Perplexity script
+import strategic_math as advisor        # Your budget math script
 
 # --- IMPORT YOUR MODULES ---
 # Make sure these filenames match exactly what you saved!
-try:
-    import current_markets as scout       # Your first script (fetching markets)
-    import research_strat as researcher # Your Perplexity script
-    import strategic_math as advisor        # Your budget math script
-except ImportError as e:
-    print(f"❌ CRITICAL ERROR: Missing a script file. Details: {e}")
-    print("Ensure 'fetch_markets.py', 'research_markets.py', and 'advisor_math.py' are in this folder.")
-    sys.exit()
 
 # --- CONFIGURATION ---
-DAILY_BUDGET = 10.00   # How much you want to allocate today
-MAX_RESEARCH_ITEMS = 3 # Limit AI calls to save money/time
+DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS   # How much you want to allocate today
+MAX_RESEARCH_ITEMS = 5 # Limit AI calls to save money/time
 MIN_VOLUME = 500       # Only look at markets with >$500 volume (Liquidity Check)
 
 def run_advisor_bot():

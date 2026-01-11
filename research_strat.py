@@ -9,10 +9,6 @@ import env
 
 # --- CONFIGURATION ---
 
-# Ensure the key exists in env.py
-if not hasattr(env, 'PERPLEXITY_API_KEY') or not env.PERPLEXITY_API_KEY:
-    raise ValueError("❌ Missing PERPLEXITY_API_KEY in env.py")
-
 client = OpenAI(
     api_key=env.PERPLEXITY_API_KEY,
     base_url="https://api.perplexity.ai"
@@ -34,7 +30,7 @@ def get_ai_analysis(market_question, current_price, end_date):
     JSON Format:
     {
         "my_estimated_probability": 0.0 to 1.0,
-        "reasoning": "A short, dense summary of why (max 2 sentences).",
+        "reasoning": "A short, dense summary of why (5 sentences).",
         "verdict": "BUY_YES", "BUY_NO", or "PASS",
         "confidence": "HIGH" or "LOW"
     }
@@ -78,7 +74,6 @@ def get_ai_analysis(market_question, current_price, end_date):
             return analysis
         else:
             print(f"❌ No JSON found in response for: {market_question}")
-            # print(f"Full response: {content}") # Uncomment for debugging
             return None
 
     except json.JSONDecodeError as e:
@@ -124,22 +119,3 @@ def research_batch(markets_list):
             print(f"      Reason: {analysis['reasoning']}")
 
     return opportunities
-
-# --- TEST BLOCK ---
-if __name__ == "__main__":
-    # Small test to ensure API connection works without running a full batch
-    print("Testing Perplexity Connection...")
-    
-    test_market = {
-        "question": "Will Bitcoin stay above $90k by Friday?",
-        "yes_price": 50,
-        "end_date": "2025-12-31"
-    }
-    
-    result = get_ai_analysis(test_market['question'], test_market['yes_price'], test_market['end_date'])
-    
-    if result:
-        print("\n✅ API Test Successful!")
-        print(json.dumps(result, indent=2))
-    else:
-        print("\n❌ API Test Failed.")
