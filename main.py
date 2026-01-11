@@ -25,7 +25,6 @@ def run_advisor_bot():
         # Assuming your scout script has a function like get_markets() or returns a list
         # If your scout script just prints, you might need to modify it slightly to 'return' the list
         all_markets = scout.fetch_diverse_kalshi_markets() 
-        # Note: If your function is named differently (e.g., get_active_markets), change it above.
     except Exception as e:
         print(f"❌ Scout failed: {e}")
         return
