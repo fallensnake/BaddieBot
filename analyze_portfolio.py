@@ -148,8 +148,3 @@ def get_portfolio_summary():
             print(f"{ticker:<25} | {side:<4} | {count:<6} | (Error fetching price)")
 
     print("-" * 85)
-
-# --- EXECUTION BLOCK ---
-if __name__ == "__main__":
-    # This block only runs if you execute the file directly
-    get_portfolio_summary()

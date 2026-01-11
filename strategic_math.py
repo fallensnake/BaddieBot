@@ -43,7 +43,7 @@ def calculate_kelly_bet(ai_probability, market_price_cents, bankroll, daily_limi
     
     return count, round(count * contract_price_dollars, 2)
 
-def get_advisor_recommendations(research_results, total_daily_budget=10.00):
+def get_advisor_recommendations(research_results, total_daily_budget=env.MAX_BET_AMOUNT_CENTS):
     """
     Distributes a fixed budget across researched markets based on 'Edge'.
     
