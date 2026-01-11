@@ -10,7 +10,7 @@ import strategic_math as advisor        # Your budget math script
 
 # --- CONFIGURATION ---
 DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS   # How much you want to allocate today
-MAX_RESEARCH_ITEMS = 5 # Limit AI calls to save money/time
+MAX_RESEARCH_ITEMS = 3 # Limit AI calls to save money/time
 MIN_VOLUME = 500       # Only look at markets with >$500 volume (Liquidity Check)
 
 def run_advisor_bot():
