@@ -13,7 +13,7 @@ def fetch_current_kalshi_markets(max_per_category=30):
     # We use the 'events' endpoint because it contains the 'category' field
     # 'with_nested_markets=true' gives us the actual tickers inside that event immediately
     params = {
-        "limit": 30,  # Get 100 events per page
+        "limit": max_per_category,  # Get 100 events per page
         "status": "open",
         "with_nested_markets": "true"
     }

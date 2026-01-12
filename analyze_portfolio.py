@@ -11,7 +11,6 @@ from cryptography.hazmat.primitives import serialization
 # --- IMPORTS ---
 import env
 
-# Try to import your researcher. If it fails, the script will still run basic portfolio features.
 try:
     import research_strat as researcher
 except ImportError:
@@ -24,7 +23,6 @@ def get_private_key():
     """
     Loads the private key from the file path defined in env.py.
     """
-    # Fallback if the user hasn't defined PATH in env.py yet
     key_path = getattr(env, 'KALSHI_PRIVATE_KEY_PATH', 'BaddieBot.txt')
     
     if not os.path.exists(key_path):
