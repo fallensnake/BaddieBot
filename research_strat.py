@@ -4,79 +4,119 @@ import httpx
 from openai import OpenAI
 import env 
 
+# Initialize Perplexity Client
 client = OpenAI(
     api_key=env.PERPLEXITY_API_KEY,
     base_url="https://api.perplexity.ai",
-    http_client=httpx.Client(timeout=.0)
+    http_client=httpx.Client(timeout=60.0) # Increased timeout for deep thinking
 )
 
-def research_event_group(category, event_list):
+def research_event_group(category, market_list):
     """
-    Analyzes complete events.
-    Input: List of Events, each containing multiple Options.
+    Analyzes a list of specific market options using Perplexity/Sonar.
+    
+    Args:
+        category (str): The category name (e.g., 'Politics')
+        market_list (list): A list of market dictionaries from the Scout module.
+                            Expected keys: 'option_name', 'ticker', 'yes_ask', 'event_title'
+    
+    Returns:
+        list: A list of the top 5 recommendation dictionaries.
     """
-    print(f"   > 🧠 Analyzing {len(event_list)} complex events in '{category}'...")
+    if not market_list:
+        return []
 
-    # 1. Format the data for the AI
-    # Structure:
-    # EVENT: Who will win? 
-    # - Option A (20c)
-    # - Option B (50c)
+    print(f"   > 🧠 Analyzing {len(market_list)} betting options in '{category}'...")
+
+    # 1. Format the data for the AI context
+    # We strip unnecessary data to save tokens and keep the AI focused.
     context_text = ""
-    for e in event_list:
-        context_text += f"\nEVENT: {e['title']} (Vol: {e['total_volume']})\n"
-        for opt in e['options']:
-            context_text += f"   - Option: {opt['name']} | Ticker: {opt['ticker']} | Price: {opt['price']}¢\n"
+    for m in market_list:
+        # Calculate implied probability from the 'ask' price (cost to buy)
+        price = m.get('yes_ask', 0)
+        
+        # Skip invalid prices (0 or >99)
+        if price < 1 or price > 99: 
+            continue
+            
+        context_text += (
+            f"- Event: {m['event_title']} | Option: {m['option_name']} | "
+            f"Ticker: {m['ticker']} | Price (Implied %): {price}%\n"
+        )
 
-    # 2. The "Arbitrage" Prompt
+    # 2. Construct the Analysis Prompt
     system_prompt = f"""
-    You are a prediction market expert. You are looking at multi-outcome events (like elections or awards on Kalshi).
+    You are a professional prediction market analyst (Kalshi/Polymarket expert).
     
-    YOUR JOB:
-    1. Look at each EVENT and its list of OPTIONS (Outcomes).
-    2. Compare the Implied Probability (Price) vs Real World Probability.
-    3. Pick the SINGLE best value bet per event.
+    YOUR TASK:
+    Analyze the provided list of betting options for the category '{category}'.
+    Identify exactly the TOP 5 "Value Bets" where the market is WRONG.
     
-    RULES:
-    - If the favorite is overpriced (e.g., 90c but risky), look for the underdog.
-    - If an option is priced at 1c or 99c, ignore it (liquidity trap).
-    - If no option looks good, ignore the event.
+    METHODOLOGY:
+    1. "Implied Probability" is simply the Price (e.g., 30c = 30%).
+    2. "Real World Probability" is your estimation based on current news, polls, and data.
+    3. Look for the "Edge": Where Real Prob > Implied Prob.
     
-    OUTPUT JSON:
+    SCORING:
+    - Confidence Score: 1 (Low) to 10 (High).
+    - Explanation: Max 3 concise sentences explaining the discrepancy.
+    
+    OUTPUT FORMAT (JSON ONLY):
+    Return a valid JSON object containing a list named "picks".
     {{
         "picks": [
             {{
-                "event": "Event Title",
-                "pick_name": "Name of the option you are buying",
-                "ticker": "The Ticker for that option",
-                "analysis": "Why this specific option is mispriced vs the others",
-                "confidence": "HIGH"
+                "ticker": "TICKER_HERE",
+                "option_name": "Name of option",
+                "market_price": 30,
+                "estimated_real_prob": 55,
+                "confidence_score": 8,
+                "reasoning": "Polls show candidate leading by 5 points, but market prices them as an underdog. Momentum is shifting favorable."
             }}
         ]
     }}
     """
     
-    user_prompt = f"Here are the {category} events:\n{context_text}\n\nFind the best value plays."
+    user_prompt = (
+        f"Here are the active markets for {category}:\n\n"
+        f"{context_text}\n\n"
+        f"Based on real-world data, return the Top 5 best value plays in JSON format."
+    )
 
     try:
+        # Call Perplexity Sonar-Pro (or Medium) for reasoning
         response = client.chat.completions.create(
             model="sonar-pro", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.2
+            temperature=0.1 # Low temp for factual consistency
         )
         
-        # Clean & Parse
-        raw = response.choices[0].message.content
-        clean = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
-        json_match = re.search(r'(\{.*\})', clean, re.DOTALL)
+        # 3. Clean & Parse Response
+        raw_content = response.choices[0].message.content
+        
+        # Remove any <think> blocks if the model outputs them
+        clean_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL)
+        
+        # Extract JSON using regex (handles if model adds extra text)
+        json_match = re.search(r'(\{.*\})', clean_content, re.DOTALL)
         
         if json_match:
-            return json.loads(json_match.group(1)).get('picks', [])
-        return []
+            data = json.loads(json_match.group(1))
+            picks = data.get('picks', [])
+            
+            # Post-processing: Add the category back to the pick for the Advisor to see
+            for p in picks:
+                p['category'] = category
+                
+            return picks
+            
+        else:
+            print("   ⚠️ Error: Could not find JSON in AI response.")
+            return []
 
     except Exception as e:
-        print(f"     ❌ Analysis Error: {e}")
+        print(f"   ❌ AI Analysis Failed: {e}")
         return []

@@ -3,130 +3,157 @@ import sys
 import env
 
 # --- IMPORT MODULES ---
+# We wrap imports in try/except to ensure the bot fails gracefully if a file is missing
 try:
-    import current_markets as scout       # Your updated fetcher (fetch_event_batches)
-    import research_strat as researcher   # Your updated researcher (research_event_group)
-    import strategic_math as advisor      # Your math module
+    import current_markets as scout       # Fetcher
+    import research_strat as researcher   # Analyst
+    import strategic_math as advisor      # Math/Bet Sizing
+    # import portfolio_manager as pm      # <--- FUTURE FEATURE: Uncomment when ready
 except ImportError as e:
     print(f"❌ CRITICAL ERROR: Missing a script file. Details: {e}")
-    sys.exit()
+    sys.exit(1)
 
 # --- CONFIGURATION ---
-DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS  # Convert cents to dollars if needed
-MAX_RESEARCH_ITEMS = 3   # How many EVENTS to research (e.g., 3 elections)
-MIN_VOLUME = 500         # Filter events with <$500 total volume
+DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS  
+MIN_VOLUME = 500         # Liquidity Trap Threshold ($500)
+MAX_RESEARCH_PER_CAT = 5 # Don't overwhelm the AI; pick top 5 liquid events per cat
+
+# List of categories to target. 
+# If your scout module fetches everything automatically, you can ignore this list 
+# or use it to filter the results.
+TARGET_CATEGORIES = [
+    "Politics", "Economics", "Sports", "Technology", "Culture", "Global"
+]
 
 def run_advisor_bot():
+    start_time = time.time()
+    
+    # 1. INITIALIZE CONTEXT
+    # This dictionary will hold all data as it moves through the pipeline.
+    # This makes adding "Portfolio Analysis" later very easy.
+    bot_context = {
+        'budget': DAILY_BUDGET,
+        'current_portfolio': [], # <--- FUTURE: pm.get_current_positions()
+        'candidates': {},        # Events passing liquidity check
+        'raw_picks': [],         # Picks from Researcher before math
+        'final_orders': []       # Final recommendations
+    }
+
     print("\n" + "="*60)
-    print(f"🤖 BADDIE BOT ADVISOR: Multi-Option Event Mode (${DAILY_BUDGET:.2f})")
+    print(f"🤖 BADDIE BOT ADVISOR: Omni-Market Mode (${DAILY_BUDGET/100:.2f})")
     print("="*60 + "\n")
 
-    # STEP 1: SCOUTING
-    # ------------------------------------------------------
-    print("📡 SCOUT: Scanning Kalshi for active multi-outcome events...")
+    # ======================================================
+    # STEP 1: SCOUT (Data Collection)
+    # ======================================================
+    print("📡 SCOUT: Scanning Kalshi markets across all categories...")
+    
     try:
-        # Use the NEW function that gets events + options
-        # Returns dict: {'Politics': [EventObj, ...], 'Economics': [...]}
-        categorized_events = scout.fetch_event_batches(max_per_category=10) 
+        # Fetch everything. Expecting return format: {'Politics': [Events], 'Economics': [Events]}
+        raw_market_data = scout.fetch_event_batches(categories=TARGET_CATEGORIES)
     except Exception as e:
-        print(f"❌ Scout failed: {e}")
+        print(f"❌ CRITICAL SCOUT FAILURE: {e}")
         return
 
-    # Flatten the dictionary into a single list of events for sorting
-    all_events = []
-    for category, event_list in categorized_events.items():
-        for event in event_list:
-            event['category'] = category # Tag it so we know where it came from
-            all_events.append(event)
+    total_found = sum(len(v) for v in raw_market_data.values())
+    print(f"   ↳ Found {total_found} raw events across {len(raw_market_data)} categories.")
 
-    print(f"✅ SCOUT: Found {len(all_events)} total complex events.")
+    # ======================================================
+    # STEP 2 & 3: FILTER & RESEARCH (Iterative Processing)
+    # ======================================================
+    # We iterate through each category to find the best specific markets in that niche.
+    
+    print(f"\n🧠 RESEARCHER: Analyzing liquidity and finding edges...")
 
-    # STEP 2: FILTERING (The "Liquidity Trap" Check)
-    # ------------------------------------------------------
-    print(f"\n🔍 FILTER: Selecting top {MAX_RESEARCH_ITEMS} liquid events...")
-    
-    # Filter by TOTAL event volume (sum of all options)
-    candidates = [e for e in all_events if e.get('total_volume', 0) > MIN_VOLUME]
-    
-    # Sort by volume (highest first)
-    candidates = sorted(candidates, key=lambda x: x.get('total_volume', 0), reverse=True)
-    
-    
-    if not candidates:
-        print("⚠️ FILTER: No events met the liquidity threshold.")
-        return
-
-    # Display what we found (showing options)
-    for i, e in enumerate(candidates):
-        print(f"\n   {i+1}. [EVENT] {e['title']} (${e['total_volume']:,} vol)")
-        # Show top 3 options as a preview
-        for opt in e['options'][:3]:
-            print(f"      - {opt['name']}: {opt['price']}¢")
-        if len(e['options']) > 3:
-            print(f"      ... and {len(e['options'])-3} more options.")
-
-    # STEP 3: RESEARCHING
-    # ------------------------------------------------------
-    print(f"\n🧠 RESEARCHER: Analyzing {len(candidates)} events with AI...")
-    
-    # We need to loop through them because your researcher function 
-    # likely takes a category and a list. Since we flattened them, 
-    # let's just re-group them or pass them one by one if preferred.
-    # For efficiency, we'll process them in one batch if possible, 
-    # or iterate. Here, I'll assume we iterate to be safe.
-    
-    research_results = []
-    
-    # Group by category again to use your batch function efficiently
-    # (Or you can just modify research_strat to take a list of mixed events)
-    from collections import defaultdict
-    events_by_cat = defaultdict(list)
-    for e in candidates:
-        events_by_cat[e['category']].append(e)
+    for category, events in raw_market_data.items():
+        print(f"\n   📂 Processing Category: {category.upper()}")
         
-    for category, events in events_by_cat.items():
-        # Using the new 'research_event_group' function
-        picks = researcher.research_event_group(category, events)
-        if picks:
-            research_results.extend(picks)
-            
-    if not research_results:
-        print("🚫 RESEARCHER: AI found no viable edges or decided to PASS.")
-        return
+        # --- A. LIQUIDITY TRAP FILTER ---
+        # Filter events in this specific category by volume
+        liquid_events = [e for e in events if e.get('total_volume', 0) > MIN_VOLUME]
+        
+        # Sort by volume (highest first) and take top N to save AI tokens
+        #liquid_events = sorted(liquid_events, key=lambda x: x.get('total_volume', 0), reverse=True)[:MAX_RESEARCH_PER_CAT]
 
-    # STEP 4: ADVISING
-    # ------------------------------------------------------
+        if not liquid_events:
+            print(f"      ⚠️ Skipping: No liquid events found in {category}.")
+            continue
+
+        print(f"      ↳ Sending {len(liquid_events)} events to AI Researcher...")
+
+        # --- B. AI RESEARCH ---
+        try:
+            # We pass the category and the specific list of events to the researcher
+            # Expecting researcher to return a list of specific outcomes/tickers
+            cat_picks = researcher.research_event_group(category, liquid_events)
+            
+            if cat_picks:
+                print(f"      ✅ Success: AI identified {len(cat_picks)} opportunities.")
+                # Add to our master list in context
+                bot_context['raw_picks'].extend(cat_picks)
+            else:
+                print(f"      🚫 Pass: AI found no edge.")
+                
+        except Exception as e:
+            print(f"      ❌ Error researching {category}: {e}")
+            continue
+
+    # ======================================================
+    # STEP 4: ADVISOR (Optimization & Sizing)
+    # ======================================================
     print("\n" + "-"*60)
+    total_picks = len(bot_context['raw_picks'])
     
-    # We need to adapt the research results to what the advisor expects.
-    # The new researcher returns a specific structure. 
-    # If advisor expects {ticker, yes_price, analysis}, ensure we map it.
+    if total_picks == 0:
+        print("😴 ADVISOR: No picks generated today. Saving budget.")
+        return
+
+    print(f"📐 ADVISOR: Optimizing {total_picks} potential bets against budget...")
+
+    # --- FUTURE FEATURE: PORTFOLIO CHECK ---
+    # Here is where you would calculate risk based on current exposure.
+    # existing_risk = pm.calculate_exposure(bot_context['current_portfolio'])
     
-    # Assuming 'advisor_math' takes the list of picks and distributes budget
-    recommendations = advisor.get_advisor_recommendations(
-        research_results, # Pass the list of picks
-        total_daily_budget=DAILY_BUDGET
-    )
-    
-    # Handle the output
-    if isinstance(recommendations, str):
-        print(f"📢 ADVICE: {recommendations}")
-    else:
-        print(f"🚀 FINAL STRATEGY REPORT ({time.strftime('%Y-%m-%d')})")
-        print("-" * 60)
-        print(f"{'PICK':<20} | {'BET SIZE':<10} | {'CONFIDENCE':<10} | {'REASON'}")
-        print("-" * 60)
+    try:
+        # The advisor takes the raw picks and determines bet sizing (Kelly Criterion / EV)
+        # We pass the whole context or just the picks
+        recommendations = advisor.get_advisor_recommendations(
+            picks=bot_context['raw_picks'], 
+            total_budget=bot_context['budget']
+        )
+        bot_context['final_orders'] = recommendations
         
-        for rec in recommendations:
-            # Adjust keys based on what your advisor returns
-            ticker = rec.get('ticker') or rec.get('pick_name', 'Unknown')
-            # Truncate name if too long
-            display_name = (ticker[:18] + '..') if len(ticker) > 20 else ticker
-            
-            print(f"{display_name:<20} | {rec['suggested_bet']:<10} | {rec.get('confidence', 'High'):<10} | {rec.get('reason', '')[:45]}...")
-            print("-" * 60)
-            
-    print("\n✅ MISSION COMPLETE.")
+    except Exception as e:
+        print(f"❌ ADVISOR ERROR: {e}")
+        return
+
+    # ======================================================
+    # STEP 5: REPORTING / EXECUTION
+    # ======================================================
+    print("\n🚀 FINAL STRATEGY REPORT")
+    print("-" * 65)
+    print(f"{'MARKET / OPTION':<30} | {'SIDE':<5} | {'BET SIZE':<10} | {'REASON'}")
+    print("-" * 65)
+
+    for rec in bot_context['final_orders']:
+        # Extract data safely with defaults
+        ticker = rec.get('ticker') or rec.get('title', 'Unknown')
+        side = rec.get('side', 'YES') # Yes/No
+        size = rec.get('suggested_bet', 0)
+        reason = rec.get('reason', 'N/A')
+
+        # Formatting for table
+        display_name = (ticker[:27] + '..') if len(ticker) > 29 else ticker
+        
+        print(f"{display_name:<30} | {side:<5} | ${size/100:<9.2f} | {reason[:20]}...")
+
+    # Summary
+    total_spent = sum(r.get('suggested_bet', 0) for r in bot_context['final_orders'])
+    print("-" * 65)
+    print(f"💰 TOTAL ALLOCATION: ${total_spent/100:.2f} / ${DAILY_BUDGET/100:.2f}")
+    print(f"⏱️  Run Time: {time.time() - start_time:.2f}s")
+    print("✅ MISSION COMPLETE.")
+
 
 if __name__ == "__main__":
     run_advisor_bot()

@@ -1,33 +1,39 @@
-import requests
-import datetime
 import time
+import requests
 from collections import defaultdict
 
-def fetch_current_kalshi_markets(max_per_category=30):
+def fetch_current_kalshi_markets(target_categories, max_per_category=30):
     """
-    Fetches active Kalshi markets but ensures diversity by capping
-    each category (Politics, Econ, Sports, etc.) to a specific limit.
+    Fetches active Kalshi markets and filters them by the requested categories.
+    
+    Args:
+        target_categories (list): List of category strings (e.g., ["Politics", "Economics"])
+        max_per_category (int): Max number of betting options to collect per category.
+        
+    Returns:
+        dict: { "Politics": [market_obj, ...], "Economics": [...] }
     """
+    # API CONFIGURATION
     base_url = "https://api.elections.kalshi.com/trade-api/v2/events"
-
-    # We use the 'events' endpoint because it contains the 'category' field
-    # 'with_nested_markets=true' gives us the actual tickers inside that event immediately
+    
     params = {
-        "limit": max_per_category,  # Get 100 events per page
-        "status": "open",
-        "with_nested_markets": "true"
+        "limit": 100,             # Max allowed by Kalshi per page
+        "status": "open",         # Only active markets
+        "with_nested_markets": "true" # CRITICAL: Gets all options (Yes/No tickers) inside the event
     }
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) KalshiScout/1.0",
+        "User-Agent": "KalshiScout/2.0",
         "Accept": "application/json"
     }
 
-    # Storage for our sorted markets
-    # Structure: { "Politics": [market1, market2...], "Economics": [...] }
+    # Normalize categories for case-insensitive matching
+    target_cats_lower = [c.lower() for c in target_categories]
+    
+    # Storage
     categorized_markets = defaultdict(list)
-
-    print("🔍 Scouting Kalshi for diverse opportunities...")
+    
+    print(f"🔍 SCOUT: Searching for {', '.join(target_categories)}...")
 
     cursor = None
     has_more_pages = True
@@ -39,8 +45,9 @@ def fetch_current_kalshi_markets(max_per_category=30):
 
         try:
             response = requests.get(base_url, params=params, headers=headers)
+            
             if response.status_code != 200:
-                print(f"❌ Error: {response.status_code} - {response.text}")
+                print(f"❌ API Error: {response.status_code} - {response.text}")
                 break
 
             data = response.json()
@@ -50,77 +57,96 @@ def fetch_current_kalshi_markets(max_per_category=30):
             if not events:
                 break
 
-            print(f"  > Processing page {page_count + 1} ({len(events)} events found)...")
+            page_count += 1
+            print(f"  > Page {page_count}: Scanning {len(events)} events...")
 
             for event in events:
-                category = event.get("category", "Uncategorized")
-                markets = event.get("markets", [])
-
-                # If we already have enough markets for this category, skip this event
-                if len(categorized_markets[category]) >= max_per_category:
+                # 1. Check Category
+                event_cat = event.get("category", "Uncategorized")
+                
+                # Skip if this category is not in our target list
+                if event_cat.lower() not in target_cats_lower:
+                    continue
+                
+                # Skip if we are already full for this category
+                if len(categorized_markets[event_cat]) >= max_per_category:
                     continue
 
-                # Add markets from this event to our bucket
-                for market in markets:
-                    # Basic filter: Ensure market is actually open
-                    if market.get("status") == "active" or market.get("status") == "open":
-                        # Enforce the limit again just in case an event has 50 markets
-                        if len(categorized_markets[category]) < max_per_category:
+                # 2. Extract Markets (Betting Options)
+                # Sort markets by volume first so we get the most liquid options
+                raw_markets = event.get("markets", [])
+                sorted_markets = sorted(raw_markets, key=lambda x: x.get("volume", 0), reverse=True)
 
-                            # Clean up the object to only what we need
-                            clean_market = {
-                                "ticker": market.get("ticker"),
-                                "question": market.get("title") or event.get("title"),
-                                "category": category,
-                                "end_date": market.get("expiration_time"),
-                                "yes_price": market.get("yes_bid", 0),
-                                "volume": market.get("volume", 0),
-                                "event_id": event.get("event_ticker")
-                            }
-                            categorized_markets[category].append(clean_market)
+                for market in sorted_markets:
+                    # Double check limit inside the market loop
+                    if len(categorized_markets[event_cat]) >= max_per_category:
+                        break
+                    
+                    # 3. Build Clean Market Object
+                    # Note: 'yes_bid' is the price you can sell at instantly
+                    #       'yes_ask' is the price you can buy at instantly
+                    clean_market = {
+                        "ticker": market.get("ticker"),
+                        "event_title": event.get("title"),
+                        "option_name": market.get("title") or market.get("subtitle"), # Specific option name (e.g., "Trump", "Harris")
+                        "category": event_cat,
+                        "expiration": market.get("expiration_time"),
+                        "yes_ask": market.get("yes_ask", 0), # Price to BUY Yes
+                        "no_ask": market.get("no_ask", 0),   # Price to BUY No
+                        "volume": market.get("volume", 0),
+                        "liquidity": market.get("liquidity", 0),
+                        "event_id": event.get("event_ticker")
+                    }
+                    
+                    categorized_markets[event_cat].append(clean_market)
 
-            # Check if we are "full" on all major categories to stop early
-            # (Optional optimization: if we have 30 of Pol, Econ, and Tech, we can stop)
-
-            if not cursor:
+            # --- OPTIMIZATION: STOP EARLY ---
+            # Check if all requested categories are full
+            all_full = True
+            for cat in target_categories:
+                # We check case-insensitive match against the keys we actually found
+                found_count = 0
+                for key in categorized_markets.keys():
+                    if key.lower() == cat.lower():
+                        found_count = len(categorized_markets[key])
+                
+                if found_count < max_per_category:
+                    all_full = False
+                    break
+            
+            if all_full:
+                print("✨ limit reached for all requested categories. Stopping early.")
                 has_more_pages = False
-
-            page_count += 1
-            time.sleep(0.2) # Be nice to the API
+            elif not cursor:
+                has_more_pages = False
+            else:
+                time.sleep(0.1) # Rate limit safety
 
         except Exception as e:
-            print(f"⚠️ Error fetching page: {e}")
+            print(f"⚠️ Exception on page {page_count}: {e}")
             has_more_pages = False
 
-    # --- Display Results ---
-    print("\n" + "="*50)
-    print(f"🎯 SCOUT REPORT: Top {max_per_category} Markets Per Category")
-    print("="*50)
+    # --- REPORTING ---
+    print("\n" + "="*60)
+    print(f"📊 FINAL SCOUT REPORT")
+    print("="*60)
+    
+    total_found = 0
+    for cat, mkts in categorized_markets.items():
+        count = len(mkts)
+        total_found += count
+        if count > 0:
+            print(f"📂 {cat}: {count} options found")
+            # Show top 1 example
+            top = mkts[0]
+            print(f"   ↳ Example: {top['event_title']} -> [{top['option_name']}]")
+            print(f"     (Buy Yes: {top['yes_ask']}¢ | Vol: {top['volume']})")
 
-    total_markets = 0
-
-    for category, markets in categorized_markets.items():
-        if not markets:
-            continue
-
-        print(f"\n📂 {category.upper()} ({len(markets)} markets)")
-        print("-" * 30)
-
-        # Sort by volume (optional) to show most active ones first
-        sorted_markets = sorted(markets, key=lambda x: x['volume'], reverse=True)
-
-        for i, m in enumerate(sorted_markets[:5], 1):  # Just print top 5 for readability
-            # Parse date safely
-            expiry = m['end_date'].split('T')[0] if m['end_date'] else "N/A"
-            print(f"  {i}. {m['question']}")
-            print(f"     [Ticker: {m['ticker']}] | Expires: {expiry} | Price: {m['yes_price']}¢")
-
-        if len(markets) > 5:
-            print(f"     ... and {len(markets) - 5} more.")
-
-        total_markets += len(markets)
-
-    print("\n" + "="*50)
-    print(f"✅ Total Markets Scouted: {total_markets}")
-
+    print(f"\n✅ Collection Complete. Total Markets: {total_found}")
     return categorized_markets
+
+# --- TEST RUN ---
+if __name__ == "__main__":
+    # Example Usage
+    my_cats = ["Politics", "Economics", "Science"]
+    results = fetch_current_kalshi_markets(target_categories=my_cats, max_per_category=30)
