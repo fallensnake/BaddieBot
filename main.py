@@ -50,7 +50,7 @@ def run_advisor_bot():
     
     try:
         # Fetch everything. Expecting return format: {'Politics': [Events], 'Economics': [Events]}
-        raw_market_data = scout.fetch_event_batches(categories=TARGET_CATEGORIES)
+        raw_market_data = scout.fetch_current_kalshi_markets(["Sports","Politics", "Economics"], max_per_category=30)
     except Exception as e:
         print(f"❌ CRITICAL SCOUT FAILURE: {e}")
         return
