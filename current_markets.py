@@ -148,5 +148,5 @@ def fetch_current_kalshi_markets(target_categories, max_per_category=30):
 # --- TEST RUN ---
 if __name__ == "__main__":
     # Example Usage
-    my_cats = ["Politics", "Economics", "Science"]
+    my_cats = ["Sports","Politics", "Economics"]
     results = fetch_current_kalshi_markets(target_categories=my_cats, max_per_category=30)
