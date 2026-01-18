@@ -80,20 +80,23 @@ def run_advisor_bot():
     print("\n🚀 FINAL STRATEGY REPORT")
     print("-" * 65)
     # We display the raw picks directly since we skipped the math/advisor step for now
-    print(f"{'MARKET / OPTION':<30} | {'PRICE':<7} | {'CONFIDENCE.':<7} | {'REASON'}")
     print("-" * 65)
 
     if not bot_context['raw_picks']:
         print("🤷‍♂️ AI Result: No high-value edges found today.")
     else:
         for rec in bot_context['raw_picks']:
-            price = rec.get('market_price') or rec.get('price', '??')
-            conf = rec.get('confidence') or rec.get('confidence_score', 'N/A')
-            reason = rec.get('reasoning') or rec.get('analysis', 'N/A')
+            # Handle potential key name variations safely
+            name = rec.get('option_name') or rec.get('pick_name', 'Unknown')
+            price = rec.get('market_price') or rec.get('market_implied_prob', 0)
+            real_prob = rec.get('estimated_real_prob', 0)
+            conf = rec.get('confidence_score') or rec.get('confidence', 0)
+            reason = rec.get('reasoning') or rec.get('analysis', 'No reason given.')
 
-            # Formatting
-            display_name = rec.get('option_name') or rec.get('pick_name', 'Unknown')
-            print(f"{display_name:<30} | {price:<7} | {conf:<7} | {reason[:20]}")
+            print(f"OPTION: {name} ({rec.get('ticker', 'N/A')})")
+            print(f"   💰 Price: {price}¢  vs  🧠 Real Prob: {real_prob}%")
+            print(f"   🔥 Confidence: {conf}/10")
+            print(f"   📝 Reason: {reason}\n")
 
     print("-" * 65)
     print(f"⏱️  Total Run Time: {time.time() - start_time:.2f}s")
