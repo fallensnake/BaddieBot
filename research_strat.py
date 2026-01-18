@@ -86,7 +86,7 @@ def research_event_group(category, market_list):
     try:
         # Call Perplexity Sonar-Pro (or Medium) for reasoning
         response = client.chat.completions.create(
-            model="sonar-pro", 
+            model="sonar", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
