@@ -8,7 +8,7 @@ import env
 client = OpenAI(
     api_key=env.PERPLEXITY_API_KEY,
     base_url="https://api.perplexity.ai",
-    http_client=httpx.Client(timeout=60.0) # Increased timeout for deep thinking
+    http_client=httpx.Client(timeout=300.0) # Increased timeout for deep thinking
 )
 
 def research_event_group(category, market_list):
@@ -120,3 +120,60 @@ def research_event_group(category, market_list):
     except Exception as e:
         print(f"   ❌ AI Analysis Failed: {e}")
         return []
+
+if __name__ == "__main__":
+    print("🧪 STARTING ISOLATED RESEARCH TEST")
+    print("="*60)
+
+    # 1. MOCK DATA
+    # This simulates what 'scout.py' would return for the "Politics" category.
+    # We include some obvious "value" plays to see if the AI catches them.
+    test_category = "Politics"
+    
+    test_markets = [
+        {
+            "ticker": "KX-TRUMP-24",
+            "event_title": "Who will win the 2024 Presidential Election?",
+            "option_name": "Donald Trump",
+            "yes_ask": 52,  # Implied 52%
+        },
+        {
+            "ticker": "KX-BIDEN-24",
+            "event_title": "Who will win the 2024 Presidential Election?",
+            "option_name": "Joe Biden",
+            "yes_ask": 45,  # Implied 45%
+        },
+        {
+            "ticker": "KX-GAVIN-24",
+            "event_title": "Who will win the 2024 Presidential Election?",
+            "option_name": "Gavin Newsom",
+            "yes_ask": 2,   # Implied 2%
+        },
+        {
+            "ticker": "KX-FED-CUT",
+            "event_title": "Will the Fed cut rates in March?",
+            "option_name": "Yes",
+            "yes_ask": 15,  # Implied 15% - maybe AI thinks this is higher?
+        },
+        {
+            "ticker": "KX-GOV-SHUT",
+            "event_title": "Will there be a government shutdown in Jan?",
+            "option_name": "Yes",
+            "yes_ask": 80,  # Implied 80%
+        }
+    ]
+
+    # 2. RUN THE FUNCTION
+    try:
+        print(f"📉 Feeding {len(test_markets)} mock markets to AI...")
+        results = research_event_group(test_category, test_markets)
+        
+        # 3. PRINT RESULTS
+        print("\n✅ TEST RESULTS:")
+        print(json.dumps(results, indent=2))
+        
+        if not results:
+            print("\n⚠️ RESULT EMPTY: Check your API Key or Prompt formatting.")
+            
+    except Exception as e:
+        print(f"\n❌ TEST FAILED: {e}")

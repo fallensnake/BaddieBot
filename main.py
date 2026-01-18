@@ -16,13 +16,13 @@ except ImportError as e:
 # --- CONFIGURATION ---
 DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS  
 MIN_VOLUME = 500         # Liquidity Trap Threshold ($500)
-MAX_RESEARCH_PER_CAT = 5 # Don't overwhelm the AI; pick top 5 liquid events per cat
+MAX_RESEARCH_PER_CAT = 20 # Don't overwhelm the AI; pick top 5 liquid events per cat
 
 # List of categories to target. 
 # If your scout module fetches everything automatically, you can ignore this list 
 # or use it to filter the results.
 TARGET_CATEGORIES = [
-    "Politics", "Economics", "Sports", "Technology", "Culture", "Global"
+    "Politics", "Economics", "Sports"
 ]
 
 def run_advisor_bot():
@@ -70,10 +70,10 @@ def run_advisor_bot():
         
         # --- A. LIQUIDITY TRAP FILTER ---
         # Filter events in this specific category by volume
-        liquid_events = [e for e in events if e.get('total_volume', 0) > MIN_VOLUME]
+        liquid_events = [e for e in events if e.get('volume', 0) > MIN_VOLUME]
         
         # Sort by volume (highest first) and take top N to save AI tokens
-        #liquid_events = sorted(liquid_events, key=lambda x: x.get('total_volume', 0), reverse=True)[:MAX_RESEARCH_PER_CAT]
+        liquid_events = sorted(liquid_events, key=lambda x: x.get('total_volume', 0), reverse=True)[:MAX_RESEARCH_PER_CAT]
 
         if not liquid_events:
             print(f"      ⚠️ Skipping: No liquid events found in {category}.")

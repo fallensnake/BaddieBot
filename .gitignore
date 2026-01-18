@@ -1,2 +1,5 @@
 /env.py
 BaddieBot.txt
+launch.json
+settings.json
+__pycache__/
