@@ -87,13 +87,12 @@ def run_advisor_bot():
         print("🤷‍♂️ AI Result: No high-value edges found today.")
     else:
         for rec in bot_context['raw_picks']:
-            ticker = rec.get('ticker') or rec.get('title', 'Unknown')
             price = rec.get('market_price') or rec.get('price', '??')
             conf = rec.get('confidence') or rec.get('confidence_score', 'N/A')
             reason = rec.get('reasoning') or rec.get('analysis', 'N/A')
 
             # Formatting
-            display_name = (ticker[:27] + '..') if len(ticker) > 29 else ticker
+            display_name = rec.get('option_name') or rec.get('pick_name', 'Unknown')
             print(f"{display_name:<30} | {price:<7} | {conf:<7} | {reason[:20]}")
 
     print("-" * 65)
