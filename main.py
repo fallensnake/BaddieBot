@@ -100,7 +100,9 @@ def run_advisor_bot():
 
     print("-" * 65)
     print(f"⏱️  Total Run Time: {time.time() - start_time:.2f}s")
-    print("✅ MISSION COMPLETE.")
+    # CHANGE THIS AT THE BOTTOM:
+    # Instead of just printing "Mission Complete", return the data
+    return bot_context
 
 if __name__ == "__main__":
     run_advisor_bot()
