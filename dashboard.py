@@ -2,36 +2,55 @@ import streamlit as st
 import pandas as pd
 import time
 import main  # Import your existing bot logic
-
+'''streamlit run dashboard.py'''
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Baddie Bot Advisor",
-    page_icon="🤖",
+    page_title="AdvAIsor",
+    page_icon=":smiling_imp:",
     layout="wide"
 )
 
 # --- HEADER ---
-st.title("🤖 Baddie Bot: Market Advisor")
+st.title("🤖  Market Advisor")
 st.markdown("### *Artificial Intelligence Prediction Market Analyst*")
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
     st.header("⚙️ Configuration")
     budget = st.number_input("Daily Budget ($)", value=100)
-    st.info(f"Targeting: Politics, Economics, Tech")
     
-    if st.button("🚀 RUN ANALYSIS", type="primary"):
-        with st.spinner("🤖 AI is scouting and analyzing markets... please wait..."):
-            # Run the actual bot logic
+    st.divider()
+    
+    st.subheader("🚀 Select Strategy")
+    
+    # Create two columns for side-by-side buttons
+    col1, col2 = st.columns(2)
+
+    # BUTTON 1: STANDARD (Specific Categories)
+    if col1.button("Standard", type="primary", use_container_width=True):
+        st.info("Targeting: Politics, Econ, Sports")
+        with st.spinner("🤖 Scouting specific categories..."):
             try:
-                # We capture the returned dictionary from your main script
-                results = main.run_advisor_bot() 
+                # Mode="standard" triggers the category-based fetch
+                results = main.run_advisor_bot(mode="standard")
                 st.session_state['results'] = results
                 st.session_state['last_run'] = time.strftime("%Y-%m-%d %H:%M:%S")
-                st.success("Analysis Complete!")
+                st.success("Standard Scan Complete!")
             except Exception as e:
-                st.error(f"Critical Error: {e}")
+                st.error(f"Error: {e}")
 
+    # BUTTON 2: DAILY (Expires < 24h)
+    if col2.button("Daily ⚡", type="secondary", use_container_width=True):
+        st.info("Targeting: All markets expiring < 24h")
+        with st.spinner("⚡ Scouting daily movers..."):
+            try:
+                # Mode="daily" triggers the expiration-based fetch
+                results = main.run_advisor_bot(mode="daily")
+                st.session_state['results'] = results
+                st.session_state['last_run'] = time.strftime("%Y-%m-%d %H:%M:%S")
+                st.success("Daily Scan Complete!")
+            except Exception as e:
+                st.error(f"Error: {e}")
 # --- MAIN DISPLAY area ---
 if 'results' in st.session_state:
     data = st.session_state['results']

@@ -1,111 +1,131 @@
 import time
 import sys
 import env
-
-# --- IMPORT MODULES ---
-try:
-    import current_markets as scout       
-    import research_strat as researcher   
-except ImportError as e:
-    print(f"❌ CRITICAL ERROR: Missing a script file. Details: {e}")
-    sys.exit(1)
-
+import current_markets as scout       
+import research_strat as researcher
 # --- CONFIGURATION ---
 DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS  
 MIN_VOLUME = 500         
 MAX_RESEARCH_PER_CAT = 15  # Scaled back slightly for speed/stability
 
-def run_advisor_bot():
+def run_advisor_bot(mode="standard"):
+    """
+    Main Runner.
+    mode="standard" -> Fetches specific categories (Politics, Econ).
+    mode="daily"    -> Fetches everything expiring in <24h.
+    """
     start_time = time.time()
     
     # 1. INITIALIZE CONTEXT
     bot_context = {
-        'raw_picks': [] 
+        'budget': DAILY_BUDGET,
+        'raw_picks': [], 
+        'final_orders': []
     }
 
     print("\n" + "="*60)
-    print(f"🤖 BADDIE BOT ADVISOR: Omni-Market Mode (${DAILY_BUDGET/100:.2f})")
+    print(f"🤖 BADDIE BOT ADVISOR: {mode.upper()} MODE (${DAILY_BUDGET/100:.2f})")
     print("="*60 + "\n")
 
     # ======================================================
-    # STEP 1: SCOUT (Data Collection)
+    # STEP 1: SCOUT (Flexible Data Collection)
     # ======================================================
-    print("📡 SCOUT: Scanning Kalshi markets across all categories...")
+    print("📡 SCOUT: Scanning Kalshi markets...")
     
-    try:
-        # Fetches categories like Politics, Economics, Sports, etc.
-        raw_market_data = scout.fetch_current_kalshi_markets(["Sports", "Politics", "Economics"], max_per_category=30)
-    except Exception as e:
-        print(f"❌ CRITICAL SCOUT FAILURE: {e}")
-        return
+
+    if mode == "daily":
+        # Might return a LIST of markets or a Dict
+        raw_data = scout.get_daily_markets(max_markets=75)
+    else:
+        # Returns a DICT {'Politics': [...], 'Economics': [...]}
+        raw_data = scout.fetch_current_kalshi_markets(
+            ["Sports", "Politics", "Economics"], 
+            max_per_category=30
+        )
+    # ======================================================
+    # STEP 1.5: NORMALIZE DATA (The Robust Fix)
+    # ======================================================
+    # We ensure 'market_data' is ALWAYS a Dictionary: {'Category': [List of Events]}
+    
+    market_data = {}
+
+    if isinstance(raw_data, list):
+        # If we got a flat list (e.g. from daily fetch), wrap it in a generic key
+        print(f"   ↳ Detected Flat List ({len(raw_data)} items). Normalizing...")
+        market_data['Daily_Movers'] = raw_data
+        
+    elif isinstance(raw_data, dict):
+        # If it's already a dict, just use it
+        market_data = raw_data
+        
+    else:
+        print("❌ Error: Scout returned unknown data format.")
+        return bot_context
+
+    total_events = sum(len(v) for v in market_data.values())
+    print(f"   ↳ Ready to process {total_events} events across {len(market_data)} groups.")
 
     # ======================================================
     # STEP 2 & 3: FILTER & RESEARCH (Iterative Processing)
     # ======================================================
-    print(f"\n🧠 RESEARCHER: Analyzing categories and finding edges...")
+    print(f"\n🧠 RESEARCHER: Analyzing opportunities...")
 
-    # We loop through the dictionary keys (categories) and values (lists of events)
-    for category, events in raw_market_data.items():
-        print(f"\n📂 Processing Category: {category.upper()}")
-        
-        # --- A. LIQUIDITY TRAP FILTER ---
-        # Keep only events with volume > MIN_VOLUME
-        target_events = raw_market_data.get(category, [])
+    # Now this loop works perfectly for BOTH modes because we normalized it!
+    for category, events in market_data.items():
+        print(f"\n📂 Processing Group: {category.upper()}")
+
+        target_events = market_data.get(category, [])
 
         if not target_events:
             print(f"   ⚠️ Skipping: No liquid events found in {category}.")
             continue
             
-        print(f"   ↳ Sending {len(target_events)} liquid events to AI Researcher...")
+        print(f"   ↳ Sending {len(target_events)} events to AI Researcher...")
 
         # --- B. AI RESEARCH ---
-        try:
-            # FIX: We pass the 'liquid_events' list directly to the researcher.
-            # We also pass 'category' so the AI knows the context.
-            cat_picks = researcher.research_event_group(category, target_events)
+        # We pass the cleaned list + category context to the AI
+        cat_picks = researcher.research_event_group(category, target_events)
             
-            if cat_picks:
-                print(f"   ✅ Success: AI identified {len(cat_picks)} opportunities.")
-                bot_context['raw_picks'].extend(cat_picks)
-            else:
-                print(f"   🚫 Pass: AI found no edge in this category.")
-                
-        except Exception as e:
-            print(f"   ❌ Error researching {category}: {e}")
-            continue
+        if cat_picks:
+            print(f"   ✅ Success: AI identified {len(cat_picks)} opportunities.")
+            bot_context['raw_picks'].extend(cat_picks)
+        else:
+            print(f"   🚫 Pass: AI found no edge.")
 
     # ======================================================
-    # STEP 4: REPORTING
+    # STEP 4: ADVISOR (Format & Return)
     # ======================================================
-    print("\n🚀 FINAL STRATEGY REPORT")
-    print("-" * 65)
-    # We display the raw picks directly since we skipped the math/advisor step for now
-    print("-" * 65)
-
-    if not bot_context['raw_picks']:
-        print("🤷‍♂️ AI Result: No high-value edges found today.")
+    if bot_context['raw_picks']:
+        print(f"\n⚡ ADVISOR: Formatting {len(bot_context['raw_picks'])} picks for Dashboard...")
+        
+        formatted_orders = []
+        for pick in bot_context['raw_picks']:
+            # Calculate Edge
+            real_prob = pick.get('estimated_real_prob', 0)
+            market_price = pick.get('market_price', 0)
+            edge = real_prob - market_price
+            
+            # Format
+            formatted_orders.append({
+                'ticker': pick.get('ticker'),
+                'title': pick.get('option_name'), 
+                'side': "YES",
+                'suggested_bet': edge, 
+                'confidence': pick.get('confidence_score', 0),
+                'reason': f"Implied: {market_price}% vs Real: {real_prob}% | {pick.get('reasoning')}"
+            })
+            
+        bot_context['final_orders'] = formatted_orders
     else:
-        for rec in bot_context['raw_picks']:
-            # Handle potential key name variations safely
-            name = rec.get('option_name') or rec.get('pick_name', 'Unknown')
-            price = rec.get('market_price') or rec.get('market_implied_prob', 0)
-            real_prob = rec.get('estimated_real_prob', 0)
-            conf = rec.get('confidence_score') or rec.get('confidence', 0)
-            reason = rec.get('reasoning') or rec.get('analysis', 'No reason given.')
-
-            print(f"OPTION: {name} ({rec.get('ticker', 'N/A')})")
-            print(f"   💰 Price: {price}¢  vs  🧠 Real Prob: {real_prob}%")
-            print(f"   🔥 Confidence: {conf}/10")
-            print(f"   📝 Reason: {reason}\n")
+        print("\n😴 ADVISOR: No picks found to display.")
 
     print("-" * 65)
-    print(f"⏱️  Total Run Time: {time.time() - start_time:.2f}s")
-    # CHANGE THIS AT THE BOTTOM:
-    # Instead of just printing "Mission Complete", return the data
+    print(f"⏱️  Run Time: {time.time() - start_time:.2f}s")
+    
     return bot_context
 
 if __name__ == "__main__":
-    run_advisor_bot()
+    run_advisor_bot('daily')
 ''' 
     # ======================================================
     # STEP 4: ADVISOR (Optimization & Sizing)

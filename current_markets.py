@@ -1,6 +1,7 @@
 import time
-import requests
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+import requests
 
 def fetch_current_kalshi_markets(target_categories, max_per_category=30):
     """
@@ -145,8 +146,138 @@ def fetch_current_kalshi_markets(target_categories, max_per_category=30):
     print(f"\n✅ Collection Complete. Total Markets: {total_found}")
     return categorized_markets
 
+def get_daily_markets(max_markets=30):
+    """
+    Fetches active Kalshi markets that expire within the next 24 hours.
+    
+    Args:
+        max_markets (int): Max number of markets to return, sorted by soonest expiration.
+        
+    Returns:
+        list: A list of market objects sorted by expiration time (ascending).
+    """
+    # API CONFIGURATION
+    base_url = "https://api.elections.kalshi.com/trade-api/v2/events"
+    
+    params = {
+        "limit": 100,             
+        "status": "open",         
+        "with_nested_markets": "true" 
+    }
+
+    headers = {
+        "User-Agent": "KalshiScout/2.0",
+        "Accept": "application/json"
+    }
+
+    # TIME CALCULATIONS (UTC)
+    # Kalshi returns timestamps in ISO strings or Unix seconds depending on the endpoint version.
+    # We will parse safely.
+    now = datetime.now(timezone.utc)
+    cutoff_time = now + timedelta(hours=24)
+    
+    print(f"⏰ SCOUT: Searching for markets expiring before {cutoff_time.strftime('%Y-%m-%d %H:%M:%S')} UTC...")
+
+    # Storage
+    daily_candidates = []
+    
+    cursor = None
+    has_more_pages = True
+    page_count = 0
+
+    while has_more_pages:
+        if cursor:
+            params["cursor"] = cursor
+
+        try:
+            response = requests.get(base_url, params=params, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"❌ API Error: {response.status_code} - {response.text}")
+                break
+
+            data = response.json()
+            events = data.get("events", [])
+            cursor = data.get("cursor")
+
+            if not events:
+                break
+
+            page_count += 1
+            # Optional: Print progress to know it's working
+            # print(f"  > Page {page_count}: Scanning {len(events)} events...")
+
+            for event in events:
+                raw_markets = event.get("markets", [])
+                
+                for market in raw_markets:
+                    # 1. Check Expiration Time
+                    expiration_str = market.get("expiration_time")
+                    if not expiration_str:
+                        continue
+                        
+                    # Parse ISO format (e.g., "2024-11-05T00:00:00Z")
+                    try:
+                        # Handle 'Z' if python version < 3.11 for fromisoformat, or just replace
+                        exp_dt = datetime.fromisoformat(expiration_str.replace('Z', '+00:00'))
+                    except ValueError:
+                        # Fallback if format is different
+                        continue
+                    
+                    # 2. Filter: Must be in the future, but less than 24h away
+                    if now < exp_dt <= cutoff_time:
+                        
+                        clean_market = {
+                            "ticker": market.get("ticker"),
+                            "event_title": event.get("title"),
+                            "option_name": market.get("title") or market.get("subtitle"),
+                            "category": event.get("category"),
+                            "expiration": exp_dt, # Keep as datetime object for sorting
+                            "expiration_str": expiration_str, # Keep string for display
+                            "yes_ask": market.get("yes_ask", 0),
+                            "volume": market.get("volume", 0),
+                            "liquidity": market.get("liquidity", 0)
+                        }
+                        
+                        daily_candidates.append(clean_market)
+
+            # Pagination Check:
+            # If we haven't found a cursor, stop. 
+            if not cursor:
+                has_more_pages = False
+            else:
+                time.sleep(0.1) # Respect rate limits
+
+        except Exception as e:
+            print(f"⚠️ Exception on page {page_count}: {e}")
+            has_more_pages = False
+
+    # --- SORTING AND SLICING ---
+    # We collected ALL valid candidates. Now we sort them to ensure we get the 
+    # SOONEST expiring ones, not just the ones that appeared on page 1 of the API.
+    
+    # Sort by expiration (ascending)
+    daily_candidates.sort(key=lambda x: x['expiration'])
+    
+    # Take the top N
+    final_markets = daily_candidates[:max_markets]
+
+    # --- REPORTING ---
+    print("\n" + "="*60)
+    print(f"📅 DAILY MARKET REPORT")
+    print("="*60)
+    print(f"Found {len(daily_candidates)} total markets expiring in < 24h.")
+    print(f"Returning top {len(final_markets)} soonest expiring.")
+    
+    if final_markets:
+        print("\n--- Next to Expire ---")
+        for m in final_markets[:3]: # Show top 3 as preview
+            print(f"⏳ {m['expiration_str']} | {m['event_title']} -> {m['option_name']}")
+            
+    return final_markets
 # --- TEST RUN ---
 if __name__ == "__main__":
     # Example Usage
-    my_cats = ["Sports","Politics", "Economics"]
-    results = fetch_current_kalshi_markets(target_categories=my_cats, max_per_category=30)
+    my_cats = ["Sports","Politics", "Economics",'Climate']
+    results = fetch_current_kalshi_markets(my_cats,50)
+    print(results)
