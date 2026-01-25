@@ -35,7 +35,7 @@ def run_advisor_bot(mode="standard"):
 
     if mode == "daily":
         # Might return a LIST of markets or a Dict
-        raw_data = scout.get_daily_markets(max_markets=75)
+        raw_data = scout.get_daily_markets(max_markets=100)
     else:
         # Returns a DICT {'Politics': [...], 'Economics': [...]}
         raw_data = scout.fetch_current_kalshi_markets(
