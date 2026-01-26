@@ -5,17 +5,31 @@ import requests
 
 def fetch_current_kalshi_markets(target_categories, max_per_category=30):
     """
-    Fetches active Kalshi markets and filters them by category AND price (10c-90c).
+    Fetches active Kalshi markets filters by:
+    1. Category (Politics, Econ, etc.)
+    2. Price (10c - 90c)
+    3. Expiration (Within the next 30 DAYS)
     """
-    # ... [API CONFIGURATION remains the same] ...
+    # API CONFIGURATION
     base_url = "https://api.elections.kalshi.com/trade-api/v2/events"
-    params = { "limit": 100, "status": "open", "with_nested_markets": "true" }
-    headers = { "User-Agent": "KalshiScout/2.0", "Accept": "application/json" }
+    params = { 
+        "limit": 100, 
+        "status": "open", 
+        "with_nested_markets": "true" 
+    }
+    headers = { 
+        "User-Agent": "KalshiScout/2.0", 
+        "Accept": "application/json" 
+    }
 
+    # --- 1. DEFINE TIME WINDOW (Next 30 Days) ---
+    now = datetime.now(timezone.utc)
+    cutoff_time = now + timedelta(days=30)
+    
     target_cats_lower = [c.lower() for c in target_categories]
     categorized_markets = defaultdict(list)
     
-    print(f"🔍 SCOUT: Searching for {', '.join(target_categories)} (Price: 10¢-90¢)...")
+    print(f"🔍 SCOUT: Searching for {', '.join(target_categories)} (Price: 10-90¢ | Exp: <30 Days)...")
 
     cursor = None
     has_more_pages = True
@@ -37,15 +51,33 @@ def fetch_current_kalshi_markets(target_categories, max_per_category=30):
 
             for event in events:
                 event_cat = event.get("category", "Uncategorized")
+                
+                # Category Filter
                 if event_cat.lower() not in target_cats_lower: continue
                 if len(categorized_markets[event_cat]) >= max_per_category: continue
 
                 raw_markets = event.get("markets", [])
+                # Sort by volume so we check liquid ones first
                 sorted_markets = sorted(raw_markets, key=lambda x: x.get("volume", 0), reverse=True)
 
                 for market in sorted_markets:
                     if len(categorized_markets[event_cat]) >= max_per_category: break
                     
+                    # --- 📅 30-DAY EXPIRATION FILTER ---
+                    expiration_str = market.get("expiration_time")
+                    if not expiration_str: continue
+
+                    try:
+                        # Parse ISO format safe for all python versions
+                        exp_dt = datetime.fromisoformat(expiration_str.replace('Z', '+00:00'))
+                    except ValueError:
+                        continue
+                    
+                    # If market expires in the past OR more than 30 days out, SKIP IT
+                    if exp_dt <= now or exp_dt > cutoff_time:
+                        continue
+                    # -----------------------------------
+
                     yes_price = market.get("yes_ask", 0)
 
                     # --- 🛡️ PRICE TRAP FILTER ---
@@ -59,7 +91,8 @@ def fetch_current_kalshi_markets(target_categories, max_per_category=30):
                         "event_title": event.get("title"),
                         "option_name": market.get("title") or market.get("subtitle"),
                         "category": event_cat,
-                        "expiration": market.get("expiration_time"),
+                        "expiration": expiration_str, # Keep raw string for display if needed
+                        "expiration_dt": exp_dt,      # Keep object for sorting if needed
                         "yes_ask": yes_price,
                         "volume": market.get("volume", 0),
                         "liquidity": market.get("liquidity", 0),
@@ -68,10 +101,9 @@ def fetch_current_kalshi_markets(target_categories, max_per_category=30):
                     
                     categorized_markets[event_cat].append(clean_market)
 
-            # Check if full
+            # Check if all categories are full
             all_full = True
             for cat in target_categories:
-                # Count explicitly to be safe
                 count = sum(1 for k in categorized_markets if k.lower() == cat.lower())
                 if count < max_per_category:
                     all_full = False
@@ -175,5 +207,5 @@ def get_daily_markets(max_markets=30):
 if __name__ == "__main__":
     # Example Usage
     my_cats = ["Sports","Politics", "Economics",'Climate']
-    results = fetch_current_kalshi_markets(my_cats, 30)
+    results = fetch_current_kalshi_markets(my_cats, max_per_category=30)
     print(results)
