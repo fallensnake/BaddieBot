@@ -35,7 +35,7 @@ def run_advisor_bot(mode="standard"):
 
     if mode == "daily":
         # Might return a LIST of markets or a Dict
-        raw_data = scout.get_daily_markets(max_markets=75)
+        raw_data = scout.get_daily_markets(max_markets=100)
     else:
         # Returns a DICT {'Politics': [...], 'Economics': [...]}
         raw_data = scout.fetch_current_kalshi_markets(
@@ -115,6 +115,7 @@ def run_advisor_bot(mode="standard"):
                 'reason': f"Implied: {market_price}% vs Real: {real_prob}% | {pick.get('reasoning')}"
             })
             
+        formatted_orders.sort(key=lambda x: x['confidence'], reverse=True)
         bot_context['final_orders'] = formatted_orders
     else:
         print("\n😴 ADVISOR: No picks found to display.")
@@ -126,41 +127,3 @@ def run_advisor_bot(mode="standard"):
 
 if __name__ == "__main__":
     run_advisor_bot('daily')
-''' 
-    # ======================================================
-    # STEP 4: ADVISOR (Optimization & Sizing)
-    # ======================================================
-    print("\n" + "-"*60)
-    total_picks = len(bot_context['raw_picks'])
-    
-    if total_picks == 0:
-        print("😴 ADVISOR: No picks generated today. Saving budget.")
-        return
-
-    print(f"📐 ADVISOR: Optimizing {total_picks} potential bets against budget...")
-
-    # --- FUTURE FEATURE: PORTFOLIO CHECK ---
-    # Here is where you would calculate risk based on current exposure.
-    # existing_risk = pm.calculate_exposure(bot_context['current_portfolio'])
-    
-    try:
-        # The advisor takes the raw picks and determines bet sizing (Kelly Criterion / EV)
-        # We pass the whole context or just the picks
-        recommendations = advisor.get_advisor_recommendations(
-            picks=bot_context['raw_picks'], 
-            total_budget=bot_context['budget']
-        )
-        bot_context['final_orders'] = recommendations
-        
-    except Exception as e:
-        print(f"❌ ADVISOR ERROR: {e}")
-        return
-'''
-'''
-        # --- A. LIQUIDITY TRAP FILTER ---
-        # Keep only events with volume > MIN_VOLUME
-        target_events = raw_market_data.get(category, [])
-        
-        # Sort by volume and trim to save AI tokens
-        liquid_events = sorted(liquid_events, key=lambda x: x.get('volume', 0), reverse=True)[:MAX_RESEARCH_PER_CAT]
-'''

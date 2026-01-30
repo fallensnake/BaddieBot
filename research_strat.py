@@ -50,7 +50,7 @@ def research_event_group(category, market_list):
     
     YOUR TASK:
     Analyze the provided list of betting options for the category '{category}'.
-    Identify exactly the TOP 5 "Value Bets" where the market is WRONG.
+    Identify exactly the TOP 10 "Value Bets" where the market is WRONG.
     
     METHODOLOGY:
     1. "Implied Probability" is simply the Price (e.g., 30c = 30%).
@@ -80,13 +80,13 @@ def research_event_group(category, market_list):
     user_prompt = (
         f"Here are the active markets for {category}:\n\n"
         f"{context_text}\n\n"
-        f"Based on real-world data, return the Top 5 best value plays in JSON format."
+        f"Based on real-world data, return the Top 10 best value plays in JSON format."
     )
 
     try:
         # Call Perplexity Sonar-Pro (or Medium) for reasoning
         response = client.chat.completions.create(
-            model="sonar-pro", 
+            model="sonar", 
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
