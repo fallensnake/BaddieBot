@@ -32,7 +32,7 @@ with st.sidebar:
     selected_cats = st.multiselect(
         "Select Markets to Scout:",
         options=available_cats,
-        default=["Politics", "Economics", "Sports"] # Default selection
+        default=["Politics", "Climate", "Sports"] # Default selection
     )
     
     st.divider()

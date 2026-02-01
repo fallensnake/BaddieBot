@@ -2,7 +2,7 @@ import time
 import sys
 import env
 import current_markets as scout       
-import research_strat as researcher
+import researchv2 as researcher
 
 # --- CONFIGURATION ---
 DAILY_BUDGET = env.MAX_BET_AMOUNT_CENTS  
@@ -49,14 +49,7 @@ def run_advisor_bot(mode="standard", categories=None):
     try:
         if mode == "daily":
             # Daily mode fetches EVERYTHING expiring soon first
-            all_daily = scout.get_daily_markets(max_markets=100)
-            
-            # We must manually filter by category here because get_daily_markets collects all
-            raw_data = [
-                m for m in all_daily 
-                if m.get('category', '').lower() in target_cats_lower
-            ]
-            print(f"   ↳ Filtered {len(all_daily)} daily markets down to {len(raw_data)} in target categories.")
+            raw_data = scout.get_daily_markets(max_markets=100)
             
         else:
             # Standard mode lets the Scout handle the category filtering efficiently
